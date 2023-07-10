@@ -36,7 +36,7 @@ jobs:
       run: touch release/wwwroot/.nojekyll
       
     - name: Commit wwwroot to GitHub Pages
-      uses: RasmusUK/github-pages-deploy-action@3.7.1
+      uses: RasmusUK/Bisserup
       with:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         BRANCH: gh-pages
