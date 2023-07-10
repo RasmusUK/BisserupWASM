@@ -1,0 +1,139 @@
+﻿@page "/"
+@using System.Drawing
+@using Newtonsoft.Json
+@using Color = MudBlazor.Color
+@inject IDialogService DialogService
+@inject Blazored.LocalStorage.ILocalStorageService localStore
+
+<Scheduler
+    OnRequestNewData="OnRequestNewData"
+    OnAddingNewAppointment="OnAddingNewAppointment"
+    OnOverflowAppointmentClick="OnOverflowAppointmentClick"
+    EnableRescheduling="true">
+    
+    <HeaderTemplate>
+        <MudToolBar>
+            <MudButton Variant="Variant.Filled" OnClick="() => context.SetCurrentMonth(DateTime.Now)">
+                I dag
+            </MudButton>
+            
+            <MudSpacer />
+            
+            <MudIconButton Icon="@Icons.Filled.RotateLeft" Color="Color.Dark" OnClick="() => context.SetCurrentMonth(context.CurrentDate.AddMonths(-1))"/>
+            <MudText Typo="Typo.h4">@context.CurrentDate.ToString("MMM yy")</MudText>
+            <MudIconButton Icon="@Icons.Filled.RotateRight" Color="Color.Dark" OnClick="() => context.SetCurrentMonth(context.CurrentDate.AddMonths(+1))"/>
+            
+            <MudSpacer />
+            
+            <MudButton EndIcon="@Icons.Material.Filled.Add" Variant="Variant.Outlined" OnClick="NewAppointment">
+                Ny booking
+            </MudButton>
+        </MudToolBar>
+    </HeaderTemplate>
+    
+    <Appointments>
+        @foreach (var app in _appointments)
+        {
+            <Appointment Start="@app.Start" End="@app.End" Color="@app.Color" OnClick="() => OnAppointmentClicked(app)" OnReschedule="(start,end) => HandleReschedule(app,start,end)">
+                @app.Title
+            </Appointment>
+        }
+    </Appointments>
+</Scheduler>
+
+@code {
+    private List<AppointmentDto> _appointments = new();
+    private readonly Random _rnd = new ();
+
+    async Task OnRequestNewData(DateTime start, DateTime end)
+    {
+        await Task.Delay(500);
+        _appointments = await ReadAppointments();
+    }
+
+    async Task NewAppointment()
+    {
+        AppointmentDto app = new AppointmentDto{
+            Title = "Ny booking",
+            Start = DateTime.Now,
+            End = DateTime.Now.AddDays(7),
+            Color = GetRandomColor()
+        };
+        
+        _appointments.Add(app);
+
+        await OnAppointmentClicked(app);
+    }
+    
+    async Task OnAddingNewAppointment(DateTime start, DateTime end)
+    {
+        AppointmentDto app = new AppointmentDto{
+            Title = "Ny booking",
+            Start = start,
+            End = end,
+            Color = GetRandomColor()
+        };
+        _appointments.Add(app);
+        
+        await OnAppointmentClicked(app);
+    }
+
+    async Task OnAppointmentClicked(AppointmentDto app)
+    {
+        var dialog = DialogService.Show<EditAppointmentDialog>("Redigér booking", new DialogParameters
+        {
+            ["Appointment"] = app,
+            ["Appointments"] = _appointments
+        });
+        await dialog.Result;
+
+        SaveAppointments();
+
+        StateHasChanged();
+    }
+
+    Task HandleReschedule(AppointmentDto appointment, DateTime newStart, DateTime newEnd)
+    {
+        appointment.Start = newStart;
+        appointment.End = newEnd;
+
+        SaveAppointments();
+        
+        return Task.CompletedTask;
+    }
+    
+    async Task OnOverflowAppointmentClick(DateTime day)
+    {
+        var dialog = DialogService.Show<OverflowAppointmentDialog>($"Appointments for {day.ToShortDateString()}", new DialogParameters
+        {
+            ["Appointments"] = _appointments,
+            ["SelectedDate"] = day,
+        });
+        await dialog.Result;
+        
+        SaveAppointments();
+
+        StateHasChanged();
+    }
+
+    string GetRandomColor() => ColorTranslator.ToHtml( FromArgb(_rnd.Next(256), _rnd.Next(256), _rnd.Next(256)));
+
+    private async void SaveAppointments()
+    {
+        var json = JsonConvert.SerializeObject(_appointments);
+        await localStore.SetItemAsync("appointments",json);
+    }
+
+    private async Task<List<AppointmentDto>> ReadAppointments()
+    {
+        try
+        {
+            var json = await localStore.GetItemAsync<string>("appointments");
+            return JsonConvert.DeserializeObject<List<AppointmentDto>>(json);
+        }
+        catch
+        {
+            return new List<AppointmentDto>();
+        }
+    }
+}
